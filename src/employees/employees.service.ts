@@ -14,6 +14,7 @@ import { DepartmentService } from 'src/department/department.service';
 import { UpdateEmployeeDto } from './dto/update-employee.dto';
 import { TokenService } from 'src/token/token.service';
 import { TokenType } from 'src/token/token.entity';
+import { EmailService } from 'src/email/email.service';
 
 export interface JwtPayload {
   id: string;
@@ -28,10 +29,11 @@ export class EmployeesService {
     private employeeRepository: Repository<Employee>,
     private departmentRepository: DepartmentService,
     private jwtService: JwtService,
-    private authService: TokenService,
+    private tokenService: TokenService,
+    private emailService: EmailService,
   ) {}
 
-  private generateAuthToken(employee: Employee): string {
+  private accessToken(employee: Employee): string {
     const payload: JwtPayload = {
       id: employee.id,
       email: employee.email,
@@ -67,18 +69,18 @@ export class EmployeesService {
 
     const savedEmployee = await this.employeeRepository.save(employee);
 
-    await this.authService.generateToken(
+    const token = await this.tokenService.generateToken(
       employee.email,
       employee.name,
       TokenType.EMPLOYEE,
       savedEmployee,
     );
 
-    // await this.emailService.sendInvitation(
-    //   employee.email,
-    //   employee.name,
-    //   token.token,
-    // );
+    await this.emailService.sendInvitation(
+      employee.email,
+      employee.name,
+      token.token,
+    );
 
     return savedEmployee;
   }
@@ -88,24 +90,45 @@ export class EmployeesService {
     Token: string,
     password: string,
   ): Promise<{ accessToken: string }> {
-    const token = await this.authService.findValidToken(Token);
+    const token = await this.tokenService.findValidToken(Token);
     if (token) {
       const employee = token.employee;
       employee.password = await bcrypt.hash(password, 10);
       employee.is_active = true;
       await this.employeeRepository.save(employee);
-      await this.authService.deleteToken(token.token);
+      await this.tokenService.deleteToken(token.token);
 
-      return { accessToken: this.generateAuthToken(employee) };
+      return { accessToken: this.accessToken(employee) };
     }
     const Employee = await this.findByEmail(email);
     if (Employee.password) {
       const isPasswordValid = await bcrypt.compare(password, Employee.password);
       if (!isPasswordValid || Employee.email !== email) {
-        throw new UnauthorizedException('Invalid credentials ot token');
+        throw new UnauthorizedException('Invalid credentials or token');
       }
-      return { accessToken: this.generateAuthToken(Employee) };
+      return { accessToken: this.accessToken(Employee) };
     }
+  }
+
+  async forgotPassword(id: string): Promise<void> {
+    const employee = await this.getById(id);
+    if (!employee) {
+      throw new NotFoundException('employee not found');
+    }
+
+    await this.tokenService.generateToken(
+      employee.email,
+      employee.name,
+      TokenType.EMPLOYEE,
+      employee,
+      48,
+    );
+
+    // await this.emailService.sendResetPasswordEmail(
+    //   employee.email,
+    //   employee.name,
+    //   token.token,
+    // );
   }
 
   async getAll(): Promise<Employee[]> {
