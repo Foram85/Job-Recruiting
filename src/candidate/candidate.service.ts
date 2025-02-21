@@ -31,7 +31,7 @@ export class CandidateService {
     private tokenService: TokenService,
   ) {}
 
-  private async generateAuthResponse(
+  private async accessToken(
     candidate: Candidate,
   ): Promise<{ accessToken: string; applications: JobApplication[] }> {
     const payload: JwtPayload = { id: candidate.id, email: candidate.email };
@@ -50,49 +50,52 @@ export class CandidateService {
 
   async setPassword(
     email: string,
-    Token: string,
+    token: string,
     password: string,
   ): Promise<{ accessToken: string; applications: JobApplication[] }> {
-    const existingCandidate = await this.findByEmail(email);
+    const validToken = await this.tokenService.findValidToken(token);
 
-    // login
-    if (existingCandidate?.password) {
-      const isPasswordValid = await bcrypt.compare(
-        password,
-        existingCandidate.password,
-      );
-      if (!isPasswordValid || existingCandidate.email !== email) {
-        throw new UnauthorizedException('Invalid credentials');
-      }
-      return this.generateAuthResponse(existingCandidate);
-    }
-    const token = await this.tokenService.findValidToken(Token);
-    if (!token) {
-      throw new NotFoundException('Invalid token');
-    }
-
-    let candidate = token.candidate;
-    candidate =
-      candidate ||
-      this.candidateRepository.create({
-        email: token.email,
-        name: token.name,
-        isActive: true,
+    if (!validToken) {
+      const candidate = await this.candidateRepository.findOne({
+        where: { email },
       });
+      if (candidate?.password) {
+        const isPasswordValid = await bcrypt.compare(
+          password,
+          candidate.password,
+        );
+        if (isPasswordValid && candidate.email === email) {
+          return this.accessToken(candidate);
+        }
+      }
+      throw new UnauthorizedException('Invalid credentials');
+    }
+
+    let candidate = await this.candidateRepository.findOne({
+      where: { email: validToken.email },
+    });
+
+    if (!candidate) {
+      candidate = this.candidateRepository.create({
+        email: validToken.email,
+        name: validToken.name,
+      });
+    }
 
     candidate.password = await bcrypt.hash(password, 10);
     candidate = await this.candidateRepository.save(candidate);
 
-    // Link existing job applications
+    // Link applications for new candidates
     await this.jobApplicationRepository
       .createQueryBuilder()
       .update(JobApplication)
       .set({ candidate })
-      .where('candidateEmail = :email', { email: candidate.email })
+      .where('candidateEmail = :email', { email: validToken.email })
       .execute();
 
-    await this.tokenService.deleteToken(token.token);
-    return this.generateAuthResponse(candidate);
+    await this.tokenService.deleteToken(validToken.token);
+
+    return this.accessToken(candidate);
   }
 
   async sendInvitation(email: string, name: string): Promise<void> {
