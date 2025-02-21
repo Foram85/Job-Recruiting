@@ -33,6 +33,18 @@ export class EmployeesController {
     return this.employeeService.login(body.email, body.token, body.password);
   }
 
+  @Post('forgot-password/:id')
+  async forgotPassword(@Param('id') id: string): Promise<void> {
+    return this.employeeService.forgotPassword(id);
+  }
+
+  @Post('reset-password')
+  async resetPassword(
+    @Body() body: { email: string; token: string; newPassword: string },
+  ): Promise<{ accessToken: string }> {
+    return this.employeeService.login(body.email, body.token, body.newPassword);
+  }
+
   @UseGuards(AuthGuard(), employeeGuard)
   @Get()
   async getEmployees(): Promise<Employee[]> {
