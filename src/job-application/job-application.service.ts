@@ -93,18 +93,39 @@ export class JobApplicationService {
     );
     if (!position) throw new NotFoundException('Position not found');
 
-    // Decide the flow based on candidateId vs unregistered candidate info
     if (createDto.candidateId) {
       return this.addRegisteredCandidateApplication(createDto, position);
-    } else {
-      return this.addUnregisteredCandidateApplication(createDto, position);
     }
+    if (!createDto.candidateEmail || !createDto.candidateName) {
+      throw new BadRequestException(
+        'Candidate email and name are required for unregistered users',
+      );
+    }
+
+    if (createDto.candidateEmail) {
+      const existingCandidate = await this.candidateService.findByEmail(
+        createDto.candidateEmail,
+      );
+
+      if (existingCandidate) {
+        throw new BadRequestException(
+          `This email is already registered. Please provide the candidateId (${existingCandidate.id}) instead.`,
+        );
+      }
+    }
+
+    return this.addUnregisteredCandidateApplication(createDto, position);
   }
 
   private async addRegisteredCandidateApplication(
     createDto: CreateJobApplicationDto,
     position: JobPosition,
   ): Promise<JobApplication> {
+    const candidate = await this.candidateService.findOneById(
+      createDto.candidateId,
+    );
+    if (!candidate) throw new NotFoundException('Candidate not found');
+
     const existingApp = await this.jobApplicationRepository.findOne({
       where: {
         position: { id: createDto.positionId },
@@ -116,11 +137,6 @@ export class JobApplicationService {
         'Candidate has already applied for this position',
       );
     }
-
-    const candidate = await this.candidateService.findOneById(
-      createDto.candidateId,
-    );
-    if (!candidate) throw new NotFoundException('Candidate not found');
 
     const application = this.jobApplicationRepository.create({
       ...createDto,
@@ -136,6 +152,7 @@ export class JobApplicationService {
     createDto: CreateJobApplicationDto,
     position: JobPosition,
   ): Promise<JobApplication> {
+    // We already checked this in the main method, but double-checking for safety
     if (!createDto.candidateEmail || !createDto.candidateName) {
       throw new BadRequestException(
         'Candidate email and name are required for unregistered users',
