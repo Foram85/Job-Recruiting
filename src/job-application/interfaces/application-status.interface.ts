@@ -1,0 +1,10 @@
+export enum ApplicationStatus {
+  NEW = 'NEW',
+  SCREENING = 'SCREENING',
+  APPROVED = 'APPROVED',
+  INTERVIEW = 'INTERVIEW',
+  REVIEW = 'REVIEW',
+  OFFER = 'OFFER',
+  HIRED = 'HIRED',
+  REJECTED = 'REJECTED',
+}
