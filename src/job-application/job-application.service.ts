@@ -76,7 +76,6 @@ export class JobApplicationService {
       candidateName,
       {
         offerLetterLink: offerDto.offerLetterLink,
-        salary: offerDto.salary,
         joiningDate: offerDto.joiningDate,
         positionName: application.position.title,
       },
@@ -91,7 +90,10 @@ export class JobApplicationService {
     const position = await this.jobPositionRepository.getById(
       createDto.positionId,
     );
-    if (!position) throw new NotFoundException('Position not found');
+    if (!position || position.position_status == PositionStatus.FILLED)
+      throw new NotFoundException(
+        'sorry!! this Position does not exist or is already filled.',
+      );
 
     if (createDto.candidateId) {
       return this.addRegisteredCandidateApplication(createDto, position);
@@ -113,7 +115,6 @@ export class JobApplicationService {
         );
       }
     }
-
     return this.addUnregisteredCandidateApplication(createDto, position);
   }
 
@@ -152,7 +153,6 @@ export class JobApplicationService {
     createDto: CreateJobApplicationDto,
     position: JobPosition,
   ): Promise<JobApplication> {
-    // We already checked this in the main method, but double-checking for safety
     if (!createDto.candidateEmail || !createDto.candidateName) {
       throw new BadRequestException(
         'Candidate email and name are required for unregistered users',
@@ -199,7 +199,10 @@ export class JobApplicationService {
   }
 
   async getById(id: string): Promise<JobApplication> {
-    const apl = this.jobApplicationRepository.findOneBy({ id });
+    const apl = this.jobApplicationRepository.findOne({
+      where: { id },
+      relations: ['position', 'candidate'],
+    });
     if (!apl) {
       throw new NotFoundException('Application not found');
     }
@@ -223,7 +226,22 @@ export class JobApplicationService {
       if (position.number_of_openings === 0) {
         position.position_status = PositionStatus.FILLED;
       }
+
       await this.jobPositionRepository.save(position);
+
+      if (apl.candidate) {
+        await this.candidateService.deleteById(apl.candidate.id);
+      } else {
+        await this.jobApplicationRepository
+          .createQueryBuilder()
+          .delete()
+          .from(JobApplication)
+          .where('candidateEmail = :email', {
+            email: apl.candidateEmail,
+          })
+          .execute();
+      }
+      return apl;
     }
     return await this.jobApplicationRepository.save(apl);
   }
