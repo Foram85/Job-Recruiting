@@ -57,10 +57,8 @@ export class InterviewService {
       interview.round = createDto.round;
       Object.assign(interview, createDto);
     } else {
-      if (!employee || employee.role !== EmployeeRole.Interviewer) {
-        throw new NotFoundException(
-          'Employee not found or assigned employee is not an interviewer.',
-        );
+      if (!employee) {
+        throw new NotFoundException('Employee not found');
       }
       interview = this.interviewRepository.create({
         ...createDto,
